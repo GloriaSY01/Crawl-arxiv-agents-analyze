@@ -49,7 +49,7 @@ pip install requests openai flask beautifulsoup4 openpyxl tqdm PyPDF2 pdfplumber
 ### 🎯 一键启动（推荐）
 
 ```bash
-python main.py --base_url "https://xxxxx/v1" --api_key "your_api_key"
+python main.py --base_url "https://xxxxx/v1" --base_url "your_api_key"
 ```
 
 系统将自动：
