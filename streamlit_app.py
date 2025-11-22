@@ -412,13 +412,13 @@ def main():
                 st.metric("分类数量", len(st.session_state.classified_papers))
     
     # 主内容区 - 标签页
-    tab1, tab2, tab3, tab4 = st.tabs(["📚 论文列表", "📊 数据可视化", "💬 智能问答", "ℹ️ 使用说明"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 数据可视化", "📋 分类详情", "💬 智能问答", "ℹ️ 使用说明"])
     
     with tab1:
-        show_papers_list()
+        show_visualization()
     
     with tab2:
-        show_visualization()
+        show_classification_details()
     
     with tab3:
         show_chat()
@@ -781,102 +781,6 @@ def export_to_excel():
         st.error(f"❌ 导出失败: {str(e)}")
 
 
-def show_papers_list():
-    """显示论文列表"""
-    st.header("📚 已爬取的论文")
-    
-    if not st.session_state.papers:
-        st.info("暂无论文数据，请先爬取论文")
-        return
-    
-    # 搜索和过滤
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        search_term = st.text_input("🔍 搜索论文", placeholder="输入关键词搜索标题或摘要...")
-    with col2:
-        sort_by = st.selectbox("排序方式", ["最新", "标题"])
-    
-    # 过滤论文
-    filtered_papers = st.session_state.papers
-    if search_term:
-        filtered_papers = [
-            p for p in filtered_papers 
-            if search_term.lower() in p.get('title', '').lower() 
-            or search_term.lower() in p.get('abstract', '').lower()
-        ]
-    
-    st.write(f"显示 {len(filtered_papers)} 篇论文")
-    
-    # 显示论文
-    for idx, paper in enumerate(filtered_papers, 1):
-        with st.expander(f"📄 {idx}. {paper.get('title', '无标题')}", expanded=False):
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                st.markdown(f"**arXiv ID:** {paper.get('arxiv_id', 'N/A')}")
-                
-                # 显示日期信息
-                if paper.get('published_date'):
-                    st.markdown(f"**发布日期:** {paper.get('published_date')}")
-                elif paper.get('updated_date'):
-                    st.markdown(f"**更新日期:** {paper.get('updated_date')}")
-                
-                # 显示作者
-                authors = paper.get('authors', [])
-                if authors:
-                    author_list = ', '.join(authors[:5])
-                    st.markdown(f"**作者:** {author_list}")
-                    if len(authors) > 5:
-                        st.markdown(f"*...等 {len(authors)} 位作者*")
-                
-                # 显示机构（如果有）
-                affiliations = paper.get('affiliations', [])
-                # 过滤出非空的机构信息
-                valid_affiliations = [a.strip() for a in affiliations if a and a.strip()]
-                if valid_affiliations:
-                    # 去重并保持顺序
-                    seen = set()
-                    unique_affiliations = []
-                    for aff in valid_affiliations:
-                        if aff not in seen:
-                            seen.add(aff)
-                            unique_affiliations.append(aff)
-                    
-                    # 最多显示前3个机构
-                    if unique_affiliations:
-                        display_affiliations = unique_affiliations[:3]
-                        st.markdown(f"**机构:** {', '.join(display_affiliations)}")
-                        if len(unique_affiliations) > 3:
-                            st.markdown(f"*...等 {len(unique_affiliations)} 个机构*")
-                
-                # 任务描述
-                if 'task_description' in paper:
-                    st.markdown(f"**任务描述:** 📌 {paper['task_description']}")
-                
-                # 分类和提交类型
-                st.markdown(f"**分类:** {', '.join(paper.get('categories', []))}")
-                st.markdown(f"**提交类型:** {paper.get('submission_type', 'N/A')}")
-            
-            with col2:
-                # PDF 链接
-                if paper.get('pdf_url'):
-                    st.link_button("📄 查看PDF", paper['pdf_url'], use_container_width=True)
-                
-                # ArXiv 页面链接（兼容两种字段名）
-                arxiv_link = paper.get('page_url') or paper.get('arxiv_url')
-                if arxiv_link:
-                    st.link_button("🔗 arXiv页面", arxiv_link, use_container_width=True)
-                
-                # 显示统计信息
-                st.metric("作者数", len(paper.get('authors', [])))
-                st.metric("分类数", len(paper.get('categories', [])))
-            
-            # 摘要
-            if paper.get('abstract'):
-                st.markdown("**摘要:**")
-                st.text_area("", paper['abstract'], height=150, key=f"abstract_{idx}", disabled=True, label_visibility="collapsed")
-
-
 def create_interactive_network_graph(classified_papers: Dict[str, List[Dict]]):
     """
     创建交互式网络图，展示论文分类/聚类结果
@@ -907,15 +811,25 @@ def create_interactive_network_graph(classified_papers: Dict[str, List[Dict]]):
         # 创建网络图
         G = nx.Graph()
         
-        # 颜色映射
-        import colorsys
-        num_categories = len(classified_papers)
-        colors = []
-        for i in range(num_categories):
-            hue = i / num_categories
-            rgb = colorsys.hsv_to_rgb(hue, 0.7, 0.9)
-            colors.append(f'rgb({int(rgb[0]*255)},{int(rgb[1]*255)},{int(rgb[2]*255)})')
+        # 简洁清爽的配色方案
+        color_palette = [
+            '#FF6B6B',  # 珊瑚红
+            '#4ECDC4',  # 青色
+            '#45B7D1',  # 天蓝
+            '#FFA07A',  # 浅橙
+            '#98D8C8',  # 薄荷绿
+            '#F7DC6F',  # 柠檬黄
+            '#BB8FCE',  # 淡紫
+            '#85C1E2',  # 浅蓝
+            '#F8B739',  # 金黄
+            '#52B788',  # 森林绿
+            '#E63946',  # 深红
+            '#457B9D',  # 钢蓝
+        ]
         
+        num_categories = len(classified_papers)
+        # 如果类别数量超过预设颜色，循环使用
+        colors = [color_palette[i % len(color_palette)] for i in range(num_categories)]
         category_colors = {cat: colors[i] for i, cat in enumerate(classified_papers.keys())}
         
         # 添加节点和边
@@ -924,6 +838,7 @@ def create_interactive_network_graph(classified_papers: Dict[str, List[Dict]]):
         node_urls = {}  # 存储节点URL（用于点击）
         
         node_list = []  # 按顺序存储所有节点ID
+        category_paper_ids = {}  # 存储每个类别的论文ID列表，用于布局
         
         # 为每个分类创建中心节点
         category_nodes = {}
@@ -940,6 +855,9 @@ def create_interactive_network_graph(classified_papers: Dict[str, List[Dict]]):
             }
             node_hover_texts[cat_node_id] = f"<b>{category}</b><br>论文数: {len(papers)}"
             
+            # 初始化该类别的论文ID列表
+            category_paper_ids[category] = []
+            
             # 为每篇论文创建节点并连接到分类节点
             for paper_idx, paper in enumerate(papers):
                 # 确保每个论文都有唯一的ID
@@ -951,6 +869,7 @@ def create_interactive_network_graph(classified_papers: Dict[str, List[Dict]]):
                 if paper_id not in G.nodes():
                     G.add_node(paper_id)
                     node_list.append(paper_id)
+                    category_paper_ids[category].append(paper_id)  # 记录该论文属于这个类别
                     # 连接到分类节点
                     G.add_edge(cat_node_id, paper_id)
                     
@@ -974,8 +893,9 @@ def create_interactive_network_graph(classified_papers: Dict[str, List[Dict]]):
                     # 悬停文本
                     hover_text = f"<b>{title_short}</b><br>"
                     hover_text += f"作者: {authors}<br>"
-                    hover_text += f"任务: {task_desc}<br>"
-                    hover_text += f"分类: {category}"
+                    if task_desc and task_desc != 'N/A':
+                        task_short = task_desc[:60] + ('...' if len(task_desc) > 60 else '')
+                        hover_text += f"任务: {task_short}"
                     node_hover_texts[paper_id] = hover_text
                     
                     # 存储URL
@@ -990,20 +910,132 @@ def create_interactive_network_graph(classified_papers: Dict[str, List[Dict]]):
         
         print(f"[DEBUG] 网络图节点数: {len(G.nodes())}, 边数: {len(G.edges())}")
         
-        # 使用力导向布局
+        # 使用改进的力导向布局 - 平衡聚集和防重叠
         try:
-            pos = nx.spring_layout(G, k=2, iterations=50, seed=42)
+            # 使用spring_layout，调整参数避免重叠
+            pos = nx.spring_layout(
+                G, 
+                k=1.0 / (len(G.nodes()) ** 0.3),  # 根据节点数量自适应k值，避免重叠
+                iterations=150,  # 更多迭代次数确保稳定
+                seed=42,
+                scale=20  # 更大的整体规模
+            )
+            print(f"[DEBUG] 使用力导向布局完成，定位了 {len(pos)} 个节点")
+            
+            # 后处理：检测并调整重叠的节点
+            import math
+            min_distance = 0.8  # 节点之间的最小距离
+            
+            node_positions = list(pos.items())
+            for i in range(len(node_positions)):
+                for j in range(i + 1, len(node_positions)):
+                    node1, pos1 = node_positions[i]
+                    node2, pos2 = node_positions[j]
+                    
+                    # 计算两节点之间的距离
+                    dx = pos1[0] - pos2[0]
+                    dy = pos1[1] - pos2[1]
+                    dist = math.sqrt(dx**2 + dy**2)
+                    
+                    # 如果距离太近，推开它们
+                    if dist < min_distance and dist > 0:
+                        # 计算推开的方向和距离
+                        push_dist = (min_distance - dist) / 2
+                        angle = math.atan2(dy, dx)
+                        
+                        # 更新位置
+                        pos[node1] = (
+                            pos1[0] + push_dist * math.cos(angle),
+                            pos1[1] + push_dist * math.sin(angle)
+                        )
+                        pos[node2] = (
+                            pos2[0] - push_dist * math.cos(angle),
+                            pos2[1] - push_dist * math.sin(angle)
+                        )
+            
+            print(f"[DEBUG] 防重叠处理完成")
+            
         except Exception as layout_error:
-            print(f"[ERROR] 布局计算失败: {layout_error}")
-            # 尝试使用更简单的布局
-            try:
-                pos = nx.circular_layout(G)
-                print("[DEBUG] 使用圆形布局作为备选")
-            except:
-                print("[ERROR] 所有布局方法都失败")
-                return None
+            print(f"[ERROR] 力导向布局失败: {layout_error}，使用自定义布局")
+            
+            # 备用：自定义分散布局
+            import math
+            import random
+            random.seed(42)
+            pos = {}
+            
+            num_categories = len(classified_papers)
+            used_positions = set()
+            
+            for cat_idx, category in enumerate(classified_papers.keys()):
+                # 为类别中心找一个不重叠的位置
+                max_attempts = 100
+                for attempt in range(max_attempts):
+                    # 随机分散类别中心 - 增大分布范围
+                    angle = random.uniform(0, 2 * math.pi)
+                    radius = random.uniform(8, 20)  # 从5-15增大到8-20
+                    cat_x = radius * math.cos(angle)
+                    cat_y = radius * math.sin(angle)
+                    
+                    # 检查是否与其他类别中心距离足够远
+                    too_close = False
+                    for other_pos in used_positions:
+                        dist = math.sqrt((cat_x - other_pos[0])**2 + (cat_y - other_pos[1])**2)
+                        if dist < 12:  # 进一步增大最小距离，避免类别簇重叠
+                            too_close = True
+                            break
+                    
+                    if not too_close or attempt == max_attempts - 1:
+                        used_positions.add((cat_x, cat_y))
+                        break
+                
+                cat_node_id = f"CAT_{category}"
+                pos[cat_node_id] = (cat_x, cat_y)
+                
+                # 获取该类别的所有论文节点ID
+                paper_ids = category_paper_ids.get(category, [])
+                num_papers = len(paper_ids)
+                
+                if num_papers == 0:
+                    continue
+                
+                # 根据论文数量调整分布半径 - 增大半径避免重叠
+                if num_papers <= 5:
+                    radius_papers = 1.5
+                elif num_papers <= 10:
+                    radius_papers = 2.0
+                elif num_papers <= 20:
+                    radius_papers = 2.8
+                else:
+                    radius_papers = 3.5
+                
+                # 将论文节点围绕类别中心分布，确保不重叠
+                for paper_idx, paper_id in enumerate(paper_ids):
+                    if num_papers == 1:
+                        paper_angle = math.pi / 4
+                        paper_radius = 1.2  # 保持一定距离
+                    elif num_papers <= 6:
+                        # 少量论文，单层分布
+                        paper_angle = 2 * math.pi * paper_idx / num_papers
+                        paper_radius = radius_papers
+                    elif num_papers <= 12:
+                        # 中等论文，单层但增大半径
+                        paper_angle = 2 * math.pi * paper_idx / num_papers
+                        paper_radius = radius_papers * 1.2
+                    else:
+                        # 多论文，多层螺旋分布
+                        layer = paper_idx // 6  # 每6个论文一层
+                        angle_offset = (layer % 2) * (math.pi / 6)  # 错开角度
+                        paper_angle = 2 * math.pi * (paper_idx % 6) / 6 + angle_offset
+                        paper_radius = radius_papers + layer * 1.0  # 增大层间距
+                    
+                    paper_x = cat_x + paper_radius * math.cos(paper_angle)
+                    paper_y = cat_y + paper_radius * math.sin(paper_angle)
+                    pos[paper_id] = (paper_x, paper_y)
+            
+            print(f"[DEBUG] 自定义分散布局完成，定位了 {len(pos)} 个节点")
         
-        # 提取边的坐标
+        # 提取边的坐标 - 使用渐变色和更精细的样式
         edge_x = []
         edge_y = []
         for edge in G.edges():
@@ -1012,10 +1044,13 @@ def create_interactive_network_graph(classified_papers: Dict[str, List[Dict]]):
             edge_x.extend([x0, x1, None])
             edge_y.extend([y0, y1, None])
         
-        # 创建边的轨迹
+        # 创建边的轨迹 - 更细的线条适合紧密布局
         edge_trace = go.Scatter(
             x=edge_x, y=edge_y,
-            line=dict(width=0.5, color='#888'),
+            line=dict(
+                width=0.5,  # 减小线宽，更简洁
+                color='rgba(180, 180, 180, 0.3)'  # 更淡的颜色
+            ),
             hoverinfo='none',
             mode='lines'
         )
@@ -1033,69 +1068,165 @@ def create_interactive_network_graph(classified_papers: Dict[str, List[Dict]]):
             node_x.append(x)
             node_y.append(y)
             
-            # 节点标签（只显示分类名称）
+            # 节点标签（只显示分类名称，简短避免重叠）
             if node_info.get(node, {}).get('type') == 'category':
-                node_labels.append(node_info[node].get('name', '')[:20])
+                label = node_info[node].get('name', '')
+                # 截断过长的标签
+                if len(label) > 15:
+                    label = label[:13] + '..'
+                node_labels.append(label)
             else:
                 node_labels.append('')
             
             # 悬停文本
             hover_texts_ordered.append(node_hover_texts.get(node, ''))
             
-            # 节点大小和颜色
+            # 节点大小和颜色 - 减小尺寸避免重叠
             if node.startswith('CAT_'):
-                # 分类节点
+                # 分类中心节点 - 适中大小
                 cat_name = node.replace('CAT_', '')
-                node_sizes_ordered.append(30)
+                node_sizes_ordered.append(25)  # 从35减小到25
                 node_colors_ordered.append(category_colors.get(cat_name, colors[0]))
             else:
-                # 论文节点
-                node_sizes_ordered.append(15)
-                # 从node_info中获取分类
+                # 论文节点 - 更小的圆点避免重叠
+                node_sizes_ordered.append(6)  # 从8减小到6
                 paper_category = node_info.get(node, {}).get('category', '')
                 node_colors_ordered.append(category_colors.get(paper_category, colors[0]))
         
-        # 创建节点的轨迹
-        node_trace = go.Scatter(
-            x=node_x, y=node_y,
+        # 分离类别节点和论文节点的轨迹，避免标签重叠
+        # 类别节点（带标签）
+        cat_x, cat_y, cat_labels, cat_hover, cat_sizes, cat_colors = [], [], [], [], [], []
+        # 论文节点（无标签）
+        paper_x, paper_y, paper_hover, paper_sizes, paper_colors = [], [], [], [], []
+        
+        for idx, node in enumerate(node_list):
+            x, y = node_x[idx], node_y[idx]
+            if node.startswith('CAT_'):
+                cat_x.append(x)
+                cat_y.append(y)
+                cat_labels.append(node_labels[idx])
+                cat_hover.append(hover_texts_ordered[idx])
+                cat_sizes.append(node_sizes_ordered[idx])
+                cat_colors.append(node_colors_ordered[idx])
+            else:
+                paper_x.append(x)
+                paper_y.append(y)
+                paper_hover.append(hover_texts_ordered[idx])
+                paper_sizes.append(node_sizes_ordered[idx])
+                paper_colors.append(node_colors_ordered[idx])
+        
+        # 类别中心节点轨迹（带标签，标签显示在上方避免重叠）
+        cat_trace = go.Scatter(
+            x=cat_x, y=cat_y,
             mode='markers+text',
             hoverinfo='text',
-            text=node_labels,
-            textposition="middle center",
-            textfont=dict(size=10, color='white'),
-            hovertext=hover_texts_ordered,
+            text=cat_labels,
+            textposition="top center",  # 标签在节点上方
+            textfont=dict(
+                size=10,  # 稍小的字体避免重叠
+                color='#2c3e50',
+                family='Arial, sans-serif',
+                weight='bold'
+            ),
+            hovertext=cat_hover,
             marker=dict(
-                size=node_sizes_ordered,
-                color=node_colors_ordered,
-                line=dict(width=2, color='white')
-            )
+                size=cat_sizes,
+                color=cat_colors,
+                line=dict(width=2, color='white'),
+                opacity=0.95
+            ),
+            cliponaxis=False,  # 允许标签超出图表区域
+            name='类别中心'
         )
         
-        # 创建图形
+        # 论文节点轨迹（无标签）
+        paper_trace = go.Scatter(
+            x=paper_x, y=paper_y,
+            mode='markers',
+            hoverinfo='text',
+            hovertext=paper_hover,
+            marker=dict(
+                size=paper_sizes,
+                color=paper_colors,
+                line=dict(width=1, color='white'),
+                opacity=0.9
+            ),
+            name='论文'
+        )
+        
+        # 在右侧显示图例
+        legend_annotations = []
+        legend_y_start = 0.98
+        legend_spacing = 0.04  # 根据类别数量动态调整间距
+        
+        # 如果类别很多，缩小间距
+        if num_categories > 15:
+            legend_spacing = 0.03
+        elif num_categories > 20:
+            legend_spacing = 0.025
+        
+        for idx, (category, color) in enumerate(category_colors.items()):
+            paper_count = len(classified_papers[category])
+            y_position = legend_y_start - idx * legend_spacing
+            
+            # 只显示在可见范围内的图例
+            if y_position > 0:
+                legend_annotations.append(
+                    dict(
+                        text=f"● {category} ({paper_count})",
+                        showarrow=False,
+                        xref="paper", yref="paper",
+                        x=1.01, y=y_position,
+                        xanchor="left", yanchor="top",
+                        font=dict(size=9, color=color),
+                        bgcolor='rgba(255, 255, 255, 0.85)',
+                        borderpad=2
+                    )
+                )
+        
+        right_margin = 200
+        
+        # 创建图形（边在最底层，论文节点在中间，类别节点和标签在最上层）
         fig = go.Figure(
-            data=[edge_trace, node_trace],
+            data=[edge_trace, paper_trace, cat_trace],
             layout=go.Layout(
                 title=dict(
-                    text='论文分类/聚类网络图',
-                    font=dict(size=16)
+                    text='论文分类网络图',
+                    font=dict(size=18, color='#2c3e50'),
+                    x=0.5,
+                    xanchor='center'
                 ),
                 showlegend=False,
                 hovermode='closest',
-                margin=dict(b=20, l=5, r=5, t=40),
+                margin=dict(b=40, l=40, r=right_margin, t=80),  # 增加上下左边距，防止标签被裁剪
                 annotations=[
                     dict(
-                        text="💡 鼠标悬停查看论文详情，点击节点打开论文网页",
+                        text="💡 提示: 同颜色节点属于同一类别 | 同类论文自动聚集 | 鼠标悬停查看详情",
                         showarrow=False,
                         xref="paper", yref="paper",
-                        x=0.005, y=-0.002,
-                        xanchor="left", yanchor="bottom",
-                        font=dict(size=12, color="#666")
+                        x=0.5, y=-0.03,
+                        xanchor="center", yanchor="top",
+                        font=dict(size=10, color="#7f8c8d")
                     )
-                ],
-                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                ] + legend_annotations,
+                xaxis=dict(
+                    showgrid=False, 
+                    zeroline=False, 
+                    showticklabels=False
+                ),
+                yaxis=dict(
+                    showgrid=False, 
+                    zeroline=False, 
+                    showticklabels=False
+                ),
                 plot_bgcolor='white',
-                height=600
+                paper_bgcolor='white',
+                height=850,  # 增加高度以适应标签和内容
+                autosize=True,  # 自动调整大小
+                uniformtext=dict(
+                    mode='hide',  # 隐藏空间不足的文本而不是缩放
+                    minsize=8  # 最小字体大小
+                )
             )
         )
         
@@ -1151,7 +1282,7 @@ def show_visualization():
         
         if viz_mode == "📊 交互式网络图":
             st.subheader("📊 论文分类交互式网络图")
-            st.caption("💡 提示：鼠标悬停查看论文详情。下方表格中可点击链接打开论文网页")
+            st.caption("💡 提示：力导向算法自动聚类，同类论文聚集在一起，右侧显示图例")
             
             if HAS_NETWORKX:
                 # 检查数据
@@ -1167,21 +1298,14 @@ def show_visualization():
                         network_fig = create_interactive_network_graph(st.session_state.classified_papers)
                     
                     if network_fig:
-                        st.plotly_chart(network_fig, use_container_width=True)
-                        
-                        # 添加论文链接表格（方便点击打开）
-                        st.subheader("📋 论文链接列表")
-                        with st.expander("点击展开查看所有论文链接", expanded=False):
-                            for category, papers in st.session_state.classified_papers.items():
-                                st.markdown(f"### {category} ({len(papers)} 篇)")
-                                for paper in papers:
-                                    title = paper.get('title', 'N/A')
-                                    arxiv_url = paper.get('arxiv_url') or paper.get('page_url', '')
-                                    if arxiv_url:
-                                        st.markdown(f"- [{title}]({arxiv_url})")
-                                    else:
-                                        st.markdown(f"- {title} (无链接)")
-                                st.divider()
+                        # 配置图表显示选项
+                        config = {
+                            'displayModeBar': True,
+                            'displaylogo': False,
+                            'modeBarButtonsToRemove': ['select2d', 'lasso2d'],
+                            'scrollZoom': True
+                        }
+                        st.plotly_chart(network_fig, use_container_width=True, config=config)
                     else:
                         st.warning("⚠️ 无法创建网络图")
                         st.info("💡 可能的原因：\n1. 数据格式不正确\n2. 网络图节点过多\n3. networkx库未正确安装\n4. 请查看终端输出的详细错误信息")
@@ -1217,19 +1341,6 @@ def show_visualization():
             )
             
             st.plotly_chart(fig, use_container_width=True)
-        
-        # 分类卡片
-        st.subheader("📋 分类详情")
-        cols = st.columns(3)
-        for idx, (category, papers) in enumerate(st.session_state.classified_papers.items()):
-            with cols[idx % 3]:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h3>{category}</h3>
-                    <h1>{len(papers)}</h1>
-                    <p>篇论文</p>
-                </div>
-                """, unsafe_allow_html=True)
     else:
         st.info("📌 请先执行 AI 分析以查看分类结果")
         
@@ -1255,6 +1366,133 @@ def show_visualization():
         )
         
         st.plotly_chart(fig, use_container_width=True)
+
+
+def show_classification_details():
+    """显示分类详情"""
+    st.header("📋 分类详情")
+    
+    if not st.session_state.papers:
+        st.info("暂无数据，请先爬取论文")
+        return
+    
+    if not st.session_state.classified_papers:
+        st.info("📌 请先执行 AI 分析以查看分类结果")
+        return
+    
+    # 统计信息
+    total_papers = sum(len(papers) for papers in st.session_state.classified_papers.values())
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("📚 分类数量", len(st.session_state.classified_papers))
+    with col2:
+        st.metric("📄 论文总数", total_papers)
+    
+    st.divider()
+    
+    # 重新生成颜色映射
+    color_palette = [
+        '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
+        '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2',
+        '#F8B739', '#52B788', '#E63946', '#457B9D',
+    ]
+    num_categories = len(st.session_state.classified_papers)
+    colors = [color_palette[i % len(color_palette)] for i in range(num_categories)]
+    
+    # 每个类别一行，可以展开查看论文
+    for idx, (category, papers) in enumerate(st.session_state.classified_papers.items()):
+        color = colors[idx]
+        
+        # 使用expander创建可展开的类别区域
+        with st.expander(f"📁 **{category}** ({len(papers)} 篇)", expanded=False):
+            # 显示类别统计信息
+            st.markdown(f"""
+            <div style="
+                background: linear-gradient(135deg, {color}20 0%, {color}08 100%);
+                border-left: 5px solid {color};
+                border-radius: 8px;
+                padding: 1rem;
+                margin-bottom: 1rem;
+            ">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 1.1rem; font-weight: 600; color: #333; margin-bottom: 0.3rem;">
+                            📚 {category}
+                        </div>
+                        <div style="font-size: 0.9rem; color: #666;">
+                            共 <strong style="color: {color}; font-size: 1.2rem;">{len(papers)}</strong> 篇论文
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # 显示该类别的所有论文（与已爬取的论文显示格式相同）
+            for paper_idx, paper in enumerate(papers, 1):
+                with st.expander(f"📄 {paper_idx}. {paper.get('title', '无标题')}", expanded=False):
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        st.markdown(f"**arXiv ID:** {paper.get('arxiv_id', 'N/A')}")
+                        
+                        # 显示日期信息
+                        if paper.get('published_date'):
+                            st.markdown(f"**发布日期:** {paper.get('published_date')}")
+                        elif paper.get('updated_date'):
+                            st.markdown(f"**更新日期:** {paper.get('updated_date')}")
+                        
+                        # 显示作者
+                        authors = paper.get('authors', [])
+                        if authors:
+                            author_list = ', '.join(authors[:5])
+                            st.markdown(f"**作者:** {author_list}")
+                            if len(authors) > 5:
+                                st.markdown(f"*...等 {len(authors)} 位作者*")
+                        
+                        # 显示机构（如果有）
+                        affiliations = paper.get('affiliations', [])
+                        # 过滤出非空的机构信息
+                        valid_affiliations = [a.strip() for a in affiliations if a and a.strip()]
+                        if valid_affiliations:
+                            # 去重并保持顺序
+                            seen = set()
+                            unique_affiliations = []
+                            for aff in valid_affiliations:
+                                if aff not in seen:
+                                    seen.add(aff)
+                                    unique_affiliations.append(aff)
+                            
+                            # 最多显示前3个机构
+                            if unique_affiliations:
+                                display_affiliations = unique_affiliations[:3]
+                                st.markdown(f"**机构:** {', '.join(display_affiliations)}")
+                                if len(unique_affiliations) > 3:
+                                    st.markdown(f"*...等 {len(unique_affiliations)} 个机构*")
+                        
+                        # 任务描述
+                        if 'task_description' in paper:
+                            st.markdown(f"**任务描述:** 📌 {paper['task_description']}")
+                        
+                        # 分类和提交类型
+                        st.markdown(f"**分类:** {', '.join(paper.get('categories', []))}")
+                        st.markdown(f"**提交类型:** {paper.get('submission_type', 'N/A')}")
+                    
+                    with col2:
+                        # PDF 链接
+                        if paper.get('pdf_url'):
+                            st.link_button("📄 查看PDF", paper['pdf_url'], use_container_width=True)
+                        
+                        # ArXiv 页面链接（兼容两种字段名）
+                        arxiv_link = paper.get('page_url') or paper.get('arxiv_url')
+                        if arxiv_link:
+                            st.link_button("🔗 arXiv页面", arxiv_link, use_container_width=True)
+                    
+                    # 摘要
+                    if paper.get('abstract'):
+                        st.markdown("**摘要:**")
+                        st.text_area("", paper['abstract'], height=150, key=f"class_abstract_{idx}_{paper_idx}", disabled=True, label_visibility="collapsed")
+                
+            st.divider()
 
 
 def show_chat():

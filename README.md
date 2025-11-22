@@ -1,69 +1,74 @@
-# 🤖 ArXiv论文智能分析系统
+# 🤖 ArXiv Intelligent Paper Analysis System
 
-一个基于AI的学术论文智能分析平台，能够自动爬取ArXiv论文、生成任务描述、智能分类并提供可视化分析和智能问答功能。
+An AI-based intelligent analysis platform for academic papers, capable of automatically crawling ArXiv papers, generating task descriptions, intelligently classifying them, and providing visualization analysis and intelligent question-and-answer functions.
 
-## ✨ 功能特点
+## ✨ Features
 
-### 核心功能
+### Core Functions
 
-- 🔍 **爬取**:
-  - **网页模式**: 纯网页爬取，获取最新论文（New submissions & Cross submissions）
-- 📅 **灵活的日期选择**:
-  - **单个日期**: 爬取指定日期的所有论文（推荐）⭐
-  - **最新论文**: 获取最近提交的论文
-- 👥 **作者信息**: 自动获取作者及单位信息
-- 🤖 **AI任务描述**: 使用LLM自动生成论文任务描述
-- 🎯 **智能分类**: 基于任务描述自动分类和聚类论文
-- 📊 **数据可视化**: 交互式图表展示分类结果
-- 💬 **智能问答**: 基于论文库的AI问答系统
-- 📁 **Excel导出**: 导出爬取和分析结果到Excel
-- 🌐 **Web界面**: 美观现代的Web界面，整合所有功能
-- 📱 **响应式设计**: 支持桌面端和移动端使用
+- 🔍 **Crawling**:
+  - **Web Mode**: Pure web crawling to obtain the latest papers (New submissions & Cross submissions)
+- 📅 **Flexible Date Selection**:
+  - **Single Date**: Crawl all papers for a specified date (Recommended)⭐
+  - **Latest Papers**: Obtain recently submitted papers
+- 👥 **Author Information**: Automatically obtain author and affiliation information
+- 🤖 AI Task Description: Automatically generate paper task descriptions using LLM
+- 🎯 **Intelligent Classification**: Automatically classify and cluster papers based on task descriptions
+- 📊 **Data Visualization**: Interactive charts display classification results
+- 💬 **Intelligent Question Answering**: An AI question answering system based on a paper database
+- 📁 **Excel Export**: Export crawling and analysis results to Excel
+- 🌐 **Web Interface**: A beautiful and modern web interface integrating all functions
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 环境要求
+### Environment Requirements
 
 - Python 3.7+
-- OpenAI兼容的API服务（如yunwu.ai）
-- 稳定的网络连接
+- OpenAI-compatible API service (such as yunwu.ai)
+
+- Stable network connection
 
 ### 安装依赖
 
 ```bash
-# 克隆项目
+# Cloning project
 git clone https://github.com/GloriaSY01/Crawl-arxiv-agents-analyze.git
 
-# 安装所有依赖包
+# Install all dependency packages
 pip install -r requirements.txt
 
-# 或手动安装
+# Or install manually
 pip install requests openai flask beautifulsoup4 openpyxl tqdm
 ```
 
-### 🎯 一键启动（推荐）
+### 🎯One-click start (recommended)
 
 ```bash
 python main.py --base_url "https://xxxxx/v1" --api_key "your_api_key"
 ```
 
-系统将自动：
-1. 🌐 启动 Streamlit Web 服务器（默认8501端口）
-2. 🚀 自动打开浏览器(如果没有自动打开，点击终端命令行下方链接)
-3. ✨ 显示现代化的交互式界面
+The system will automatically:
 
-**首次使用步骤**：
+1. 🌐 Start the Streamlit web server (default port 8501)
 
-1. 运行 `python main.py`
-2. 浏览器会自动打开 http://localhost:8501
-3. 在侧边栏配置LLM：
-   - 输入模型名称（如：`gpt-4`, `gpt-5`）
-   - 点击"🔗 连接LLM"按钮
-4. 选择爬取方式：
-   - **网页爬取**: 获取最新的论文
-5. 选择类别，点击"🚀 开始爬取"
-6. 使用"🤖 AI分析"进行智能分类
-7. 切换标签页查看结果和使用智能问答
+2. 🚀 Automatically open your browser (if it doesn't open automatically, click the link below the terminal command line)
+
+3. ✨ Display a modern, interactive interface
+
+**Initial Usage Steps:**
+
+1. Run `python main.py --base_url "https://xxx/xx" --api_key "your_api_key"`
+2. Your browser will automatically open http://localhost:8501
+3. Configure LLM in the sidebar:
+   - Enter the model name (e.g., `gpt-4`, `gpt-5`)
+   - Click the "🔗 Connect LLM" button
+4. Select the crawling method:
+   - **Web Scraping:** Get the latest papers
+5. Select the category and click "🚀 Start Crawling"
+6. Use "🤖 AI Analysis" for intelligent classification
+7. Switch tabs to view results and use intelligent question answering
+
+
 
 ### 🔑 API配置
 
@@ -474,9 +479,7 @@ Arxiv-crawler/
 
 ## 📞 联系方式
 
-- 项目地址: [https://github.com/JiayuJeff/Arxiv-crawler](https://github.com/JiayuJeff/Arxiv-crawler)
-- 作者: JiayuJeff
-- 邮箱: jliufv@connect.ust.hk
+- 项目地址: [[GloriaSY01/Crawl-arxiv-agents-analyze: 7008 homework](https://github.com/GloriaSY01/Crawl-arxiv-agents-analyze)]
 
 ---
 
