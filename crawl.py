@@ -46,6 +46,13 @@ class ArxivCrawler:
         if not date:
             # 如果没有指定日期，使用今天的日期
             date = datetime.now().strftime("%Y-%m-%d")
+        # 检查缓存：查找papers文件夹中是否已有该日期的数据
+        
+        cached_data = self._check_cache(category, date)
+        if cached_data:
+            print(f"\n✅ 找到缓存数据（日期: {date}），跳过爬取")
+            print(f"   缓存文件包含 {len(cached_data)} 篇论文")
+            return cached_data
         
         # 构建URL：https://arxiv.org/catchup/{category}/{date}?abs=True
         url = f"{self.arxiv_web_url}/catchup/{category}/{date}?abs=True"
@@ -426,5 +433,76 @@ class ArxivCrawler:
             
         except Exception as e:
             print(f"  获取详情失败 ({arxiv_id}): {e}")
-        
+
         return detail
+
+    def _check_cache(self, category: str, date: str) -> Optional[List[Dict]]:
+        """
+        检查papers文件夹中是否已有该日期的缓存数据
+        
+        Args:
+            category: 学科分类
+            date: 日期字符串 YYYY-MM-DD
+        
+        Returns:
+            如果找到缓存则返回论文列表，否则返回None
+        """
+        papers_dir = "papers"
+        if not os.path.exists(papers_dir):
+            return None
+        
+        try:
+            # 遍历papers文件夹中的所有json文件
+            for filename in os.listdir(papers_dir):
+                if not filename.endswith('.json'):
+                    continue
+                
+                filepath = os.path.join(papers_dir, filename)
+                
+                # 读取json文件
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                # 检查数据格式：可能是list或dict
+                papers = None
+                crawl_date = None
+                crawl_category = None
+                
+                if isinstance(data, dict):
+                    # 新格式：{metadata: {...}, papers: [...]}
+                    metadata = data.get('metadata', {})
+                    crawl_date = metadata.get('crawl_date', '')
+                    crawl_category = metadata.get('category', '')
+                    papers = data.get('papers', [])
+                elif isinstance(data, list):
+                    # 旧格式：直接是论文列表
+                    papers = data
+                    # 从文件名中提取日期
+                    # 新格式：crawled_YYYYMMDD_timestamp.json
+                    # 旧格式：crawled_timestamp.json
+                    import re
+                    # 匹配第一组8位数字作为日期
+                    match = re.search(r'crawled_(\d{8})', filename)
+                    if match:
+                        date_str = match.group(1)
+                        year = date_str[0:4]
+                        month = date_str[4:6]
+                        day = date_str[6:8]
+                        crawl_date = f"{year}-{month}-{day}"
+                    # 从第一篇论文获取分类
+                    if papers and len(papers) > 0:
+                        crawl_category = papers[0].get('category_main', '')
+                
+                # 匹配日期和分类
+                if crawl_date and date in crawl_date:
+                    if not category or category == crawl_category:
+                        if papers:  # 确保有数据
+                            print(f"   找到缓存文件: {filename}")
+                            return papers
+        
+        except Exception as e:
+            print(f"  检查缓存时出错: {e}")
+            import traceback
+            traceback.print_exc()
+            
+        return None

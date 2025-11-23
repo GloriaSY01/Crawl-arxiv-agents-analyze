@@ -28,6 +28,8 @@ try:
     from crawl import ArxivCrawler
     from analyzer import PaperAnalyzer
     from excel_exporter import ExcelExporter
+    from paper_chat import PaperChatBot
+    from pdf_processor import PDFProcessor
 except ImportError as e:
     st.error(f"模块导入失败: {e}")
 
@@ -294,7 +296,12 @@ if 'analyzer' not in st.session_state:
     st.session_state.analyzer = None
 if 'llm_configured' not in st.session_state:
     st.session_state.llm_configured = False
-
+if 'paper_chatbot' not in st.session_state:
+    st.session_state.paper_chatbot = None
+if 'current_paper_for_chat' not in st.session_state:
+    st.session_state.current_paper_for_chat = None
+if 'paper_chat_messages' not in st.session_state:
+    st.session_state.paper_chat_messages = []
 
 def main():
     """主函数"""
@@ -412,7 +419,7 @@ def main():
                 st.metric("分类数量", len(st.session_state.classified_papers))
     
     # 主内容区 - 标签页
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 数据可视化", "📋 分类详情", "💬 智能问答", "ℹ️ 使用说明"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 数据可视化", "📋 分类详情", "💬 单篇论文问答", "ℹ️ 使用说明"])
     
     with tab1:
         show_visualization()
@@ -421,7 +428,7 @@ def main():
         show_classification_details()
     
     with tab3:
-        show_chat()
+        show_paper_detail_chat()
     
     with tab4:
         show_instructions()
@@ -1521,7 +1528,21 @@ def show_classification_details():
                         arxiv_link = paper.get('page_url') or paper.get('arxiv_url')
                         if arxiv_link:
                             st.link_button("🔗 arXiv页面", arxiv_link, use_container_width=True)
-                    
+                       
+                        # 使用唯一的 key 避免冲突
+                        if st.button("💬 研读此文", key=f"chat_btn_{paper.get('arxiv_id')}_{idx}_{paper_idx}", use_container_width=True):
+                            # 构建与 show_paper_detail_chat 中完全一致的选项文本格式
+                            # 逻辑：f"{arxiv_id}: {title[:100]}"
+                            p_title = paper.get('title', 'N/A')[:100]
+                            p_id = paper.get('arxiv_id', 'N/A')
+                            target_option = f"{p_id}: {p_title}"
+                            
+                            # 更新 Session State 中的选择框值
+                            st.session_state['paper_selector'] = target_option
+                            
+                            # 弹出成功提示
+                            st.toast(f"✅ 已选中: {p_title[:20]}...", icon="🎉")
+                            st.toast("👉 请点击上方的 '单篇论文问答' 标签页开始对话", icon="👆")
                     # 摘要
                     if paper.get('abstract'):
                         st.markdown("**摘要:**")
@@ -1529,74 +1550,242 @@ def show_classification_details():
                 
             st.divider()
 
-
-def show_chat():
-    """显示智能问答"""
-    st.header("💬 智能问答")
+def show_paper_detail_chat():
+    """显示单篇论文深度问答"""
+    st.header("📖 单篇论文深度问答")
     
     if not st.session_state.papers:
         st.info("暂无论文数据，请先爬取论文")
         return
     
     if not st.session_state.llm_configured:
-        st.warning("⚠️ 请先配置 LLM")
+        st.warning("⚠️ 请先在侧边栏配置 LLM")
         return
     
-    # 初始化聊天历史
-    if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = []
+    # 论文选择
+    st.subheader("1️⃣ 选择论文")
+    
+    # 创建论文选项
+    paper_options = {}
+    for i, paper in enumerate(st.session_state.papers):
+        title = paper.get('title', 'N/A')[:100]
+        arxiv_id = paper.get('arxiv_id', 'N/A')
+        option_text = f"{arxiv_id}: {title}"
+        paper_options[option_text] = i
+    
+    # 添加空选项作为placeholder
+    options_list = ["-- 请选择论文 --"] + list(paper_options.keys())
+    
+    selected_option = st.selectbox(
+        "选择要深度问答的论文",
+        options=options_list,
+        index=0,  # 默认选中第一项（placeholder）
+        key="paper_selector"
+    )
+    
+    # 如果没有选择有效论文，直接返回
+    if not selected_option or selected_option == "-- 请选择论文 --":
+        st.info("👆 请先从上方下拉框中选择一篇论文")
+        return
+    
+    selected_paper_idx = paper_options[selected_option]
+    selected_paper = st.session_state.papers[selected_paper_idx]
+    
+    # 显示论文基本信息
+    with st.expander("📋 论文基本信息", expanded=True):
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown(f"**标题:** {selected_paper.get('title', 'N/A')}")
+            st.markdown(f"**ArXiv ID:** {selected_paper.get('arxiv_id', 'N/A')}")
+            
+            authors = selected_paper.get('authors', [])
+            if authors:
+                st.markdown(f"**作者:** {', '.join(authors[:5])}")
+                if len(authors) > 5:
+                    st.markdown(f"*...等 {len(authors)} 位作者*")
+            
+            categories = selected_paper.get('categories', [])
+            if categories:
+                st.markdown(f"**分类:** {', '.join(categories)}")
+        
+        with col2:
+            if selected_paper.get('pdf_url'):
+                st.link_button("📄 查看PDF", selected_paper['pdf_url'], use_container_width=True)
+            
+            arxiv_url = selected_paper.get('page_url') or selected_paper.get('arxiv_url')
+            if arxiv_url:
+                st.link_button("🔗 arXiv页面", arxiv_url, use_container_width=True)
+    
+    st.divider()
+    
+    # 加载论文按钮
+    st.subheader("2️⃣ 加载论文全文")
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        load_button = st.button("🔄 加载论文全文", use_container_width=True, type="primary")
+    
+    with col2:
+        force_reload = st.checkbox("强制重新下载", value=False)
+    
+    with col3:
+        if st.session_state.current_paper_for_chat:
+            if st.button("🗑️ 清空对话", use_container_width=True):
+                st.session_state.paper_chat_messages = []
+                st.session_state.current_paper_for_chat = None
+                st.session_state.paper_chatbot = None
+                st.rerun()
+    
+    # 检查论文是否变化
+    paper_changed = (st.session_state.current_paper_for_chat and 
+                     st.session_state.current_paper_for_chat.get('arxiv_id') != selected_paper.get('arxiv_id'))
+    
+    # 如果论文变化了，显示提示
+    if paper_changed:
+        st.warning(f"⚠️ 您选择了新的论文，请点击'加载论文全文'按钮重新加载")
+    
+    # 加载论文（只在点击按钮时触发）
+    if load_button:
+        with st.spinner("正在下载并处理PDF，这可能需要几分钟..."):
+            # 创建或获取chatbot
+            if not st.session_state.paper_chatbot:
+                try:
+                    base_url = os.getenv('YUNWU_API_BASE')
+                    api_key = os.getenv('YUNWU_API_KEY')
+                    
+                    st.session_state.paper_chatbot = PaperChatBot(
+                        model_name=st.session_state.llm_model,
+                        base_url=base_url,
+                        api_key=api_key
+                    )
+                except Exception as e:
+                    st.error(f"创建问答机器人失败: {e}")
+                    return
+            
+            # 加载论文
+            try:
+                success = st.session_state.paper_chatbot.load_paper(
+                    selected_paper, 
+                    force_download=force_reload
+                )
+                
+                if success:
+                    # 如果是切换到新论文，清空对话历史
+                    if (st.session_state.current_paper_for_chat and 
+                        st.session_state.current_paper_for_chat.get('arxiv_id') != selected_paper.get('arxiv_id')):
+                        st.session_state.paper_chat_messages = []
+                    
+                    st.session_state.current_paper_for_chat = selected_paper
+                    st.session_state.paper_chat_messages = []
+                    st.success("✅ 论文加载成功！现在可以开始问答了")
+                    
+                    # 显示加载信息
+                    if st.session_state.paper_chatbot.current_full_text:
+                        text_length = len(st.session_state.paper_chatbot.current_full_text)
+                        st.info(f"📄 已加载全文，共 {text_length:,} 字符")
+                    else:
+                        st.warning("⚠️ 全文加载失败，将仅使用摘要信息")
+                else:
+                    st.error("❌ 论文加载失败")
+            except Exception as e:
+                st.error(f"加载论文时出错: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+    
+    st.divider()
+    
+    # 问答界面
+    st.subheader("3️⃣ 开始问答")
+    
+    if not st.session_state.current_paper_for_chat:
+        st.info("💡 请先点击上方的 '加载论文全文' 按钮")
+        return
+    
+    # 显示当前论文信息
+    st.caption(f"📚 当前论文: {st.session_state.current_paper_for_chat.get('title', 'N/A')[:80]}...")
+    
+    # 示例问题（仅在对话为空时显示）
+    if not st.session_state.paper_chat_messages:
+        st.markdown("💡 **示例问题:**")
+        example_col1, example_col2 = st.columns(2)
+        
+        with example_col1:
+            if st.button("📋 这篇论文的核心贡献是什么？", use_container_width=True):
+                st.session_state.paper_chat_messages.append({
+                    "role": "user", 
+                    "content": "这篇论文的核心贡献是什么？"
+                })
+                st.rerun()
+            
+            if st.button("🔬 使用了什么研究方法？", use_container_width=True):
+                st.session_state.paper_chat_messages.append({
+                    "role": "user", 
+                    "content": "这篇论文使用了什么研究方法？"
+                })
+                st.rerun()
+                
+            if st.button("📚 列出主要参考文献", use_container_width=True):
+                st.session_state.paper_chat_messages.append({
+                    "role": "user", 
+                    "content": "请列出这篇论文引用的主要参考文献，并简要说明其中最关键的几篇。"
+                })
+                st.rerun()
+        
+        with example_col2:
+            if st.button("📊 实验结果如何？", use_container_width=True):
+                st.session_state.paper_chat_messages.append({
+                    "role": "user", 
+                    "content": "这篇论文的实验结果如何？有什么亮点？"
+                })
+                st.rerun()
+            
+            if st.button("🎯 有什么局限性或未来工作？", use_container_width=True):
+                st.session_state.paper_chat_messages.append({
+                    "role": "user", 
+                    "content": "这篇论文有什么局限性？作者提出了哪些未来工作方向？"
+                })
+                st.rerun()
+                
+            if st.button("🧠 用通俗语言解释全文", use_container_width=True):
+                st.session_state.paper_chat_messages.append({
+                    "role": "user", 
+                    "content": "请用通俗易懂的语言（就像给初学者讲课一样）解释这篇论文的核心思想和主要内容。"
+                })
+                st.rerun()
+        
+        st.markdown("---")
     
     # 显示聊天历史
-    for message in st.session_state.chat_history:
+    for message in st.session_state.paper_chat_messages:
         with st.chat_message(message["role"]):
             st.write(message["content"])
     
-    # 聊天输入
-    if prompt := st.chat_input("输入您的问题..."):
-        # 添加用户消息
-        st.session_state.chat_history.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.write(prompt)
+    # 如果有未处理的用户消息，生成AI回复
+    if (st.session_state.paper_chat_messages and 
+        st.session_state.paper_chat_messages[-1]["role"] == "user"):
         
-        # 生成AI回复
+        user_question = st.session_state.paper_chat_messages[-1]["content"]
+        
+        # 生成AI回复并显示
         with st.chat_message("assistant"):
-            with st.spinner("思考中..."):
-                response = chat_with_papers(prompt)
-                st.write(response)
-        
-        st.session_state.chat_history.append({"role": "assistant", "content": response})
-
-
-def chat_with_papers(message: str) -> str:
-    """与论文库对话"""
-    try:
-        # 构建上下文
-        context_papers = st.session_state.papers[:10]
-        context = "当前论文库：\n"
-        for i, paper in enumerate(context_papers, 1):
-            context += f"{i}. {paper.get('title', '无标题')}\n"
-            if 'task_description' in paper:
-                context += f"   任务: {paper['task_description']}\n"
-        
-        prompt = f"""{context}
-
-用户问题: {message}
-
-请基于论文库回答用户的问题。"""
-        
-        response = st.session_state.llm_client.chat.completions.create(
-            model=st.session_state.llm_model,
-            messages=[
-                {"role": "system", "content": "你是一个专业的学术论文分析助手。"},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=2000
-        )
-        
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"❌ 对话失败: {str(e)}"
+            with st.spinner("AI正在分析论文并思考..."):
+                try:
+                    response = st.session_state.paper_chatbot.chat(user_question)
+                    st.write(response)
+                    st.session_state.paper_chat_messages.append({"role": "assistant", "content": response})
+                except Exception as e:
+                    error_msg = f"❌ 对话出错: {str(e)}"
+                    st.write(error_msg)
+                    st.session_state.paper_chat_messages.append({"role": "assistant", "content": error_msg})
+    
+    # 聊天输入框始终在最底部
+    if prompt := st.chat_input("输入您关于这篇论文的问题..."):
+        # 立即添加用户消息到历史
+        st.session_state.paper_chat_messages.append({"role": "user", "content": prompt})
+        # 重新运行以显示用户问题并生成AI回复
+        st.rerun()
 
 
 def show_instructions():
