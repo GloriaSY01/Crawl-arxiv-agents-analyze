@@ -1035,6 +1035,41 @@ def create_interactive_network_graph(classified_papers: Dict[str, List[Dict]]):
             
             print(f"[DEBUG] 自定义分散布局完成，定位了 {len(pos)} 个节点")
         
+        # 在确定布局后，进一步拉大论文节点与分类中心节点的距离
+        # 这样可以让每个类别的“花瓣”更舒展，避免论文节点挤在分类节点附近
+        try:
+            distance_scale = 2.0  # 距离放大倍数，可根据需要调整（>1 表示拉远）
+            for node_id, info in node_info.items():
+                if info.get('type') != 'paper':
+                    continue
+                
+                cat = info.get('category')
+                if not cat:
+                    continue
+                
+                cat_node_id = category_nodes.get(cat)
+                if not cat_node_id:
+                    continue
+                
+                if node_id not in pos or cat_node_id not in pos:
+                    continue
+                
+                cx, cy = pos[cat_node_id]
+                px, py = pos[node_id]
+                
+                dx = px - cx
+                dy = py - cy
+                
+                # 如果刚好重合，给一个很小的偏移，避免除零或方向为零
+                if dx == 0 and dy == 0:
+                    dx, dy = 0.1, 0.1
+                
+                pos[node_id] = (cx + dx * distance_scale, cy + dy * distance_scale)
+            
+            print(f"[DEBUG] 已放大论文节点与分类节点的距离，scale={distance_scale}")
+        except Exception as adjust_error:
+            print(f"[WARN] 调整论文节点距离失败: {adjust_error}")
+        
         # 提取边的坐标 - 使用渐变色和更精细的样式
         edge_x = []
         edge_y = []
