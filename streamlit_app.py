@@ -306,8 +306,8 @@ if 'paper_chat_messages' not in st.session_state:
 def main():
     """主函数"""
     
-    # 标题
-    st.markdown('<h1 class="main-header">🚀 ArXiv论文智能分析系统</h1>', unsafe_allow_html=True)
+    # 标题和顶部锚点
+    st.markdown('<span id="top"></span><h1 class="main-header">🚀 ArXiv论文智能分析系统</h1>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">AI驱动的论文爬取、分析与可视化平台</p>', unsafe_allow_html=True)
     
     # 侧边栏
@@ -403,7 +403,7 @@ def main():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🤖 AI分析", use_container_width=True, disabled=not st.session_state.papers or not st.session_state.llm_configured):
-                analyze_papers()
+                analyze_papers_with_cache()
         
         with col2:
             if st.button("📁 导出Excel", use_container_width=True, disabled=not st.session_state.papers):
@@ -530,6 +530,8 @@ def crawl_papers_by_date(category: str, date: str):
         
         if papers and len(papers) > 0:
             st.session_state.papers = papers
+            # 保存爬取日期用于缓存
+            st.session_state.crawl_date = date
             
             # 统计
             new_count = sum(1 for p in papers if p.get('submission_type') == 'New submission')
@@ -639,6 +641,8 @@ def crawl_papers(category: str):
         
         if papers and len(papers) > 0:
             st.session_state.papers = papers
+            # 保存当前日期用于缓存
+            st.session_state.crawl_date = datetime.now().strftime("%Y-%m-%d")
             
             # 保存到文件
             try:
@@ -756,6 +760,124 @@ def analyze_papers():
         traceback.print_exc()
     finally:
         progress_bar.empty()
+
+
+def analyze_papers_with_cache():
+    """带缓存的AI分析功能"""
+    if not st.session_state.papers:
+        st.warning("请先爬取论文")
+        return
+    
+    if not st.session_state.analyzer:
+        st.warning("请先配置LLM")
+        return
+    
+    # 创建缓存目录
+    cache_dir = "cache"
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    # 生成缓存文件名（基于爬取日期）
+    crawl_date = st.session_state.get('crawl_date', datetime.now().strftime("%Y-%m-%d"))
+    cache_file = os.path.join(cache_dir, f"analysis_{crawl_date}.json")
+    
+    status_placeholder = st.empty()
+    
+    # 检查缓存是否存在
+    if os.path.exists(cache_file):
+        try:
+            status_placeholder.info(f"🔍 发现缓存文件: {crawl_date}")
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+            
+            # 验证缓存数据
+            if 'papers' in cache_data and 'classified_papers' in cache_data:
+                # 检查论文数量是否匹配
+                cached_count = len(cache_data['papers'])
+                current_count = len(st.session_state.papers)
+                
+                if cached_count == current_count:
+                    # 加载缓存
+                    st.session_state.papers = cache_data['papers']
+                    st.session_state.classified_papers = cache_data['classified_papers']
+                    status_placeholder.success(f"✅ 已加载缓存的分析结果！({cached_count} 篇论文, {len(cache_data['classified_papers'])} 个类别)")
+                    time.sleep(1.5)
+                    status_placeholder.empty()
+                    st.rerun()
+                    return
+                else:
+                    status_placeholder.warning(f"⚠️ 缓存数据不匹配 (缓存:{cached_count}篇 vs 当前:{current_count}篇)，将重新分析...")
+                    time.sleep(1)
+            else:
+                status_placeholder.warning("⚠️ 缓存文件格式不正确，将重新分析...")
+                time.sleep(1)
+        except Exception as e:
+            status_placeholder.warning(f"⚠️ 缓存加载失败: {str(e)}，将重新分析...")
+            time.sleep(1)
+    
+    # 没有缓存或缓存无效，执行分析
+    status_placeholder.info("🚀 开始AI分析...")
+    progress_bar = st.progress(0)
+    info_placeholder = st.empty()
+    
+    # 进度回调函数
+    def progress_callback(current, total, paper_title):
+        progress = int((current / total) * 50)
+        progress_bar.progress(progress)
+        status_placeholder.info(f"🤖 正在生成任务描述 [{current}/{total}]")
+        info_placeholder.info(f"📄 当前处理: {paper_title}")
+    
+    try:
+        total_papers = len(st.session_state.papers)
+        print(f"\n[DEBUG] 开始分析 {total_papers} 篇论文")
+        
+        # 生成任务描述
+        st.session_state.papers = st.session_state.analyzer.batch_generate_task_descriptions(
+            st.session_state.papers, 
+            show_progress=True,
+            progress_callback=progress_callback
+        )
+        
+        progress_bar.progress(60)
+        status_placeholder.info("🎯 正在智能分类...")
+        info_placeholder.info("📊 基于任务描述进行聚类...")
+        
+        # 分类
+        st.session_state.classified_papers = st.session_state.analyzer.classify_papers(
+            st.session_state.papers
+        )
+        
+        # 保存到缓存
+        try:
+            cache_data = {
+                'papers': st.session_state.papers,
+                'classified_papers': st.session_state.classified_papers,
+                'crawl_date': crawl_date,
+                'analysis_time': datetime.now().isoformat(),
+                'model': st.session_state.analyzer.model_name
+            }
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False, indent=2)
+            print(f"[INFO] 分析结果已缓存到: {cache_file}")
+        except Exception as e:
+            print(f"[WARNING] 保存缓存失败: {e}")
+        
+        progress_bar.progress(100)
+        status_placeholder.success(f"✅ 分析完成！共 {len(st.session_state.classified_papers)} 个类别")
+        info_placeholder.success(f"📊 已为 {total_papers} 篇论文生成任务描述并完成分类")
+        time.sleep(2)
+        status_placeholder.empty()
+        info_placeholder.empty()
+        st.rerun()
+        
+    except Exception as e:
+        status_placeholder.error(f"❌ 分析失败: {str(e)}")
+        info_placeholder.error(f"详细错误信息请查看终端输出")
+        import traceback
+        print(f"\n[ERROR] 分析失败: {e}")
+        traceback.print_exc()
+    finally:
+        progress_bar.empty()
+
 
 
 def export_to_excel():
@@ -1430,7 +1552,146 @@ def show_classification_details():
     with col2:
         st.metric("📄 论文总数", total_papers)
     
-    st.divider()
+    # 添加CSS减小统计信息后的间距
+    st.markdown("""
+    <style>
+    /* 减小统计信息与下方内容的间距 */
+    [data-testid="stMetric"] {
+        margin-bottom: 0 !important;
+    }
+    [data-testid="stHorizontalBlock"] {
+        margin-bottom: 0.5rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # 添加固定导航栏的全局CSS
+    st.markdown("""
+    <style>
+    /* 固定右侧导航栏 */
+    [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"] > [data-testid="stVerticalBlock"] {
+        position: relative;
+    }
+    
+    /* 创建固定导航区域（右侧） */
+    .fixed-nav-container {
+        position: fixed;
+        top: 100px;
+        right: 20px;
+        width: 200px;
+        max-height: calc(100vh - 140px);
+        overflow-y: auto;
+        background: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        z-index: 1000;
+        border: 1px solid #e0e0e0;
+    }
+    
+    /* 锚点向上偏移以补偿顶部白色栏 */
+    span[id] {
+        scroll-margin-top: 100px;
+    }
+    
+    .fixed-nav-container::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .fixed-nav-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    
+    .fixed-nav-container::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 10px;
+    }
+    
+    .fixed-nav-container::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+    
+    .nav-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 15px;
+        color: #333;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 8px;
+    }
+    
+    .nav-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .nav-list li {
+        margin: 2px 0;
+    }
+    
+    .nav-link {
+        color: #1f77b4;
+        text-decoration: none !important;
+        font-size: 0.88rem;
+        display: block;
+        padding: 5px 10px;
+        border-radius: 5px;
+        transition: all 0.2s;
+        line-height: 1.4;
+    }
+    
+    .nav-link:hover {
+        background-color: #e3f2fd;
+        color: #0d47a1;
+        text-decoration: none !important;
+        transform: translateX(3px);
+    }
+    
+    .nav-link:focus, .nav-link:active, .nav-link:visited {
+        text-decoration: none !important;
+    }
+    
+    .top-link {
+        color: #666;
+        font-weight: 600;
+        background-color: #f5f5f5;
+        margin-bottom: 10px;
+    }
+    
+    .top-link:hover {
+        background-color: #eeeeee;
+        color: #333;
+    }
+    
+    /* 主内容区域右侧留出空间 */
+    .main-content-area {
+        margin-right: 280px;
+        padding-right: 20px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # 渲染固定导航栏
+    nav_html = """
+    <div class="fixed-nav-container">
+        <div class="nav-title">📑 类别导航</div>
+        <ul class="nav-list">
+            <li><a href="#top" class="nav-link top-link">⬆️ 回到顶部</a></li>
+"""
+    
+    for idx, category in enumerate(st.session_state.classified_papers.keys()):
+        nav_html += f'            <li><a href="#category_{idx}" class="nav-link">{category}</a></li>\n'
+    
+    nav_html += """        </ul>
+    </div>
+    """
+    
+    st.markdown(nav_html, unsafe_allow_html=True)
+    
+    # 主内容区域（带左边距）
+    st.markdown('<div class="main-content-area">', unsafe_allow_html=True)
     
     # 重新生成颜色映射
     color_palette = [
@@ -1441,33 +1702,70 @@ def show_classification_details():
     num_categories = len(st.session_state.classified_papers)
     colors = [color_palette[i % len(color_palette)] for i in range(num_categories)]
     
+    # 添加CSS移除expander间距
+    st.markdown("""
+    <style>
+    /* 强制移除所有expander的间距 */
+    [data-testid="stExpander"] {
+        margin-bottom: 1px !important;
+        margin-top: 0 !important;
+        padding: 0 !important;
+    }
+    
+    /* 移除第一个expander上方的空白 */
+    div.main-content-area > [data-testid="stExpander"]:first-of-type {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }
+    
+    /* 移除expander内容区域的额外间距 */
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+    }
+    
+    /* 移除expander之间的分割线 */
+    [data-testid="stExpander"] {
+        border: none !important;
+    }
+    
+    .streamlit-expanderHeader {
+        font-size: 1rem !important;
+        padding: 0.5rem 0.75rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     # 每个类别一行，可以展开查看论文
     for idx, (category, papers) in enumerate(st.session_state.classified_papers.items()):
         color = colors[idx]
+        
+        # 添加锚点标记
+        st.markdown(f'<div id="category_{idx}"></div>', unsafe_allow_html=True)
         
         # 使用expander创建可展开的类别区域
         with st.expander(f"📁 **{category}** ({len(papers)} 篇)", expanded=False):
             # 显示类别统计信息
             st.markdown(f"""
-            <div style="
-                background: linear-gradient(135deg, {color}20 0%, {color}08 100%);
-                border-left: 5px solid {color};
-                border-radius: 8px;
-                padding: 1rem;
-                margin-bottom: 1rem;
-            ">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-size: 1.1rem; font-weight: 600; color: #333; margin-bottom: 0.3rem;">
-                            📚 {category}
-                        </div>
-                        <div style="font-size: 0.9rem; color: #666;">
-                            共 <strong style="color: {color}; font-size: 1.2rem;">{len(papers)}</strong> 篇论文
-                        </div>
-                    </div>
-                </div>
+<div style="
+    background: linear-gradient(135deg, {color}20 0%, {color}08 100%);
+    border-left: 5px solid {color};
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <div style="font-size: 1.1rem; font-weight: 600; color: #333; margin-bottom: 0.3rem;">
+                📚 {category}
             </div>
-            """, unsafe_allow_html=True)
+            <div style="font-size: 0.9rem; color: #666;">
+                共 <strong style="color: {color}; font-size: 1.2rem;">{len(papers)}</strong> 篇论文
+            </div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
             
             # 显示该类别的所有论文（与已爬取的论文显示格式相同）
             for paper_idx, paper in enumerate(papers, 1):
@@ -1529,26 +1827,104 @@ def show_classification_details():
                         if arxiv_link:
                             st.link_button("🔗 arXiv页面", arxiv_link, use_container_width=True)
                        
-                        # 使用唯一的 key 避免冲突
-                        if st.button("💬 研读此文", key=f"chat_btn_{paper.get('arxiv_id')}_{idx}_{paper_idx}", use_container_width=True):
-                            # 构建与 show_paper_detail_chat 中完全一致的选项文本格式
-                            # 逻辑：f"{arxiv_id}: {title[:100]}"
+                        # 使用唯一的 key 避免冲突  
+                        chat_toggle_key = f"chat_toggle_{paper.get('arxiv_id')}_{idx}_{paper_idx}"
+                        if chat_toggle_key not in st.session_state:
+                            st.session_state[chat_toggle_key] = False
+                        
+                        # 快速问答按钮
+                        if st.button("💬 快速问答", key=f"chat_btn_{paper.get('arxiv_id')}_{idx}_{paper_idx}", use_container_width=True):
+                            st.session_state[chat_toggle_key] = not st.session_state[chat_toggle_key]
+                            st.rerun()
+                        
+                        # 深度问答按钮
+                        if st.button("📖 深度问答此文", key=f"deep_chat_btn_{paper.get('arxiv_id')}_{idx}_{paper_idx}", use_container_width=True):
                             p_title = paper.get('title', 'N/A')[:100]
                             p_id = paper.get('arxiv_id', 'N/A')
                             target_option = f"{p_id}: {p_title}"
-                            
-                            # 更新 Session State 中的选择框值
                             st.session_state['paper_selector'] = target_option
-                            
-                            # 弹出成功提示
-                            st.toast(f"✅ 已选中: {p_title[:20]}...", icon="🎉")
-                            st.toast("👉 请点击上方的 '单篇论文问答' 标签页开始对话", icon="👆")
+                            st.toast("✅ 已同步到单篇论文问答，请切换标签页", icon="📖")
+                    
                     # 摘要
                     if paper.get('abstract'):
                         st.markdown("**摘要:**")
                         st.text_area("", paper['abstract'], height=150, key=f"class_abstract_{idx}_{paper_idx}", disabled=True, label_visibility="collapsed")
-                
-            st.divider()
+                    
+                    # 如果打开了问答模式，显示问答区域
+                    if st.session_state.get(chat_toggle_key, False):
+                        st.markdown("---")
+                        st.markdown("### 💬 快速问答（基于摘要）")
+                        
+                        # 初始化该论文的问答历史
+                        chat_key = f"quick_chat_{paper.get('arxiv_id')}"
+                        if chat_key not in st.session_state:
+                            st.session_state[chat_key] = []
+                        
+                        # 显示聊天历史
+                        for msg in st.session_state[chat_key]:
+                            with st.chat_message(msg["role"]):
+                                st.write(msg["content"])
+                        
+                        # 问答输入
+                        if prompt := st.chat_input("输入您的问题...", key=f"quick_input_{paper.get('arxiv_id')}_{idx}_{paper_idx}"):
+                                # 添加用户消息
+                                st.session_state[chat_key].append({"role": "user", "content": prompt})
+                                
+                                # 生成AI回复
+                                with st.chat_message("assistant"):
+                                    with st.spinner("思考中..."):
+                                        try:
+                                            # 构建上下文
+                                            context = f"""
+论文标题: {paper.get('title', 'N/A')}
+作者: {', '.join(paper.get('authors', [])[:5])}
+摘要: {paper.get('abstract', 'N/A')}
+任务描述: {paper.get('task_description', 'N/A')}
+
+用户问题: {prompt}
+
+请基于以上论文信息回答用户的问题。如果需要PDF全文才能回答，请提示用户点击下方的"加载完整PDF"按钮。
+"""
+                                            
+                                            response = st.session_state.llm_client.chat.completions.create(
+                                                model=st.session_state.llm_model,
+                                                messages=[
+                                                    {"role": "system", "content": "你是一个专业的学术论文分析助手。"},
+                                                    {"role": "user", "content": context}
+                                                ],
+                                                temperature=0.7,
+                                                max_tokens=1000
+                                            )
+                                            
+                                            answer = response.choices[0].message.content
+                                            st.write(answer)
+                                            st.session_state[chat_key].append({"role": "assistant", "content": answer})
+                                            
+                                        except Exception as e:
+                                            error_msg = f"❌ 回答出错: {str(e)}"
+                                            st.error(error_msg)
+                                            st.session_state[chat_key].append({"role": "assistant", "content": error_msg})
+                                
+                                st.rerun()
+                        
+                        # 操作按钮
+                        btn_col1, btn_col2 = st.columns(2)
+                        with btn_col1:
+                            if st.button("📖 针对全文深度问答", key=f"goto_full_{paper.get('arxiv_id')}_{idx}_{paper_idx}", use_container_width=True):
+                                p_title = paper.get('title', 'N/A')[:100]
+                                p_id = paper.get('arxiv_id', 'N/A')
+                                target_option = f"{p_id}: {p_title}"
+                                st.session_state['paper_selector'] = target_option
+                                st.toast("✅ 已同步到单篇论文问答，请切换标签页", icon="📖")
+                        
+                        with btn_col2:
+                            if st.button("❌ 关闭问答", key=f"close_chat_{paper.get('arxiv_id')}_{idx}_{paper_idx}", use_container_width=True):
+                                st.session_state[chat_toggle_key] = False
+                                st.rerun()
+    
+    # 关闭主内容区域div
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 def show_paper_detail_chat():
     """显示单篇论文深度问答"""
