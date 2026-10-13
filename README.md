@@ -3,6 +3,45 @@
 An AI-based intelligent analysis platform for academic papers, capable of automatically crawling ArXiv papers, generating task descriptions, intelligently classifying them, and providing visualization analysis and intelligent question-and-answer functions.
 
 
+## 🖼️ Example Output
+
+The following screenshots from the December 2025 project report show example sessions of the running system.
+
+### Paper Classification Network
+
+![Interactive paper classification network](assets/screenshots/classification-network.png)
+
+Category nodes organize papers into research themes. Each paper node is connected to its assigned category, providing an interactive overview of the analyzed collection.
+
+### Category Distribution
+
+![Number of papers in each research category](assets/screenshots/category-distribution.png)
+
+The distribution chart summarizes the number of papers assigned to each theme, including medical imaging, 3D vision, vision-language models, and multimodal learning.
+
+### Full-Text Paper Q&A
+
+![A real question and answer about Faster VGGT with Block-Sparse Global Attention](assets/screenshots/paper-qa.png)
+
+Example response to a request for a beginner-friendly explanation of *Faster VGGT with Block-Sparse Global Attention*, using the paper Q&A interface.
+
+<details>
+<summary>Crawling interface and paper browsing</summary>
+
+### Crawling Settings
+
+![Date and category selection in the arXiv crawling interface](assets/screenshots/crawling-interface.png)
+
+Users can choose a specific date or the latest submissions and select the target arXiv category.
+
+### Classified Paper Browser
+
+![Browsing papers organized by category](assets/screenshots/classification-browser.png)
+
+An example session displays 157 papers organized into 44 categories, with category navigation and expandable paper lists.
+
+</details>
+
 ## ✨ Features
 
 ### Core Functions
